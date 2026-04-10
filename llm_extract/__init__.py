@@ -54,9 +54,16 @@ from .advanced import (
     SchemaEvolver,
     ExtractionPipeline,
     extract_with_budget,
+    # 1.2.0
+    OutputTransformer,
+    FieldConfidenceScorer,
+    PartialExtractor,
+    PartialResult,
+    ExtractionDiff,
+    MultiSchemaExtractor,
 )
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "Mahesh Makvana"
 __all__ = [
     # Core
@@ -86,4 +93,11 @@ __all__ = [
     "SchemaEvolver",
     "ExtractionPipeline",
     "extract_with_budget",
+    # Advanced (1.2.0)
+    "OutputTransformer",
+    "FieldConfidenceScorer",
+    "PartialExtractor",
+    "PartialResult",
+    "ExtractionDiff",
+    "MultiSchemaExtractor",
 ]

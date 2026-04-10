@@ -9,6 +9,13 @@ New in 1.1.0:
 - ExtractionPipeline: Multi-stage extraction with chained schemas
 - RateLimiter: Token-bucket rate limiter for API compliance
 - extract_with_retry_budget: Budget-aware extraction with timeout
+
+New in 1.2.0:
+- OutputTransformer: Post-process / normalise extraction results with chained transforms
+- FieldConfidenceScorer: Per-field confidence scores (not just overall)
+- PartialExtractor: Return best-effort partial data even when validation fails
+- ExtractionDiff: Diff two ExtractResult objects to detect field-level changes
+- MultiSchemaExtractor: Run one prompt against N schemas concurrently and merge
 """
 from __future__ import annotations
 
@@ -609,3 +616,409 @@ def extract_with_budget(
             return result
 
     return last_result
+
+
+# ---------------------------------------------------------------------------
+# OutputTransformer  (new in 1.2.0)
+# ---------------------------------------------------------------------------
+
+class OutputTransformer:
+    """
+    Chain post-processing transforms over an ExtractResult's data dict.
+
+    Each transform is a callable ``(data: dict) -> dict``.
+    Transforms run in the order they are registered.
+
+    Example
+    -------
+    >>> transformer = OutputTransformer()
+    >>> transformer.add(lambda d: {**d, "name": d.get("name", "").strip().title()})
+    >>> transformer.add(lambda d: {**d, "age": max(0, d.get("age", 0))})
+    >>> result = extract(...)
+    >>> clean = transformer.apply(result)
+    >>> clean.data  # transformed dict
+    """
+
+    def __init__(self) -> None:
+        self._transforms: List[Callable[[Dict[str, Any]], Dict[str, Any]]] = []
+
+    def add(self, transform: Callable[[Dict[str, Any]], Dict[str, Any]]) -> "OutputTransformer":
+        """Register a transform. Returns self for chaining."""
+        self._transforms.append(transform)
+        return self
+
+    def apply(self, result: Any) -> Any:
+        """
+        Apply all transforms to result.data. Returns a new ExtractResult with
+        the transformed data (does not mutate the original).
+        """
+        import copy
+        from .extractor import ExtractResult
+
+        new_data = copy.deepcopy(result.data or {})
+        for fn in self._transforms:
+            try:
+                new_data = fn(new_data)
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("OutputTransformer: transform %s raised %s", fn, exc)
+
+        return ExtractResult(
+            data=new_data,
+            succeeded=result.succeeded,
+            attempts=result.attempts,
+            provider=result.provider,
+            model=result.model,
+            failures=result.failures,
+            raw=result.raw,
+        )
+
+    def apply_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply transforms to a plain dict (no ExtractResult needed)."""
+        import copy
+        result = copy.deepcopy(data)
+        for fn in self._transforms:
+            result = fn(result)
+        return result
+
+
+# ---------------------------------------------------------------------------
+# FieldConfidenceScorer  (new in 1.2.0)
+# ---------------------------------------------------------------------------
+
+class FieldConfidenceScorer:
+    """
+    Compute per-field confidence scores for an extraction result.
+
+    Returns a dict mapping field names to scores in [0.0, 1.0]:
+      - 1.0  field present with correct type
+      - 0.5  field present but type is wrong / unexpected
+      - 0.0  field missing or None
+
+    Example
+    -------
+    >>> scorer = FieldConfidenceScorer()
+    >>> scores = scorer.score(result, schema)
+    >>> print(scores)
+    {'name': 1.0, 'age': 1.0, 'email': 0.5}
+    >>> print(scorer.overall(scores))
+    0.833
+    """
+
+    def score(self, result: Any, schema: "SchemaInput") -> Dict[str, float]:
+        """Return per-field confidence scores."""
+        s = Schema(schema) if not isinstance(schema, Schema) else schema
+        data = result.data or {}
+        scores: Dict[str, float] = {}
+
+        for field in s.fields:
+            val = data.get(field.name)
+            if val is None:
+                scores[field.name] = 0.0
+            else:
+                try:
+                    if isinstance(val, field.python_type):
+                        scores[field.name] = 1.0
+                    elif field.python_type == float and isinstance(val, (int, float)):
+                        scores[field.name] = 1.0
+                    else:
+                        scores[field.name] = 0.5
+                except Exception:
+                    scores[field.name] = 0.5
+
+        return scores
+
+    def overall(self, scores: Dict[str, float]) -> float:
+        """Average of all per-field scores. Returns 0.0 for empty dicts."""
+        if not scores:
+            return 0.0
+        return round(sum(scores.values()) / len(scores), 4)
+
+    def low_confidence_fields(self, scores: Dict[str, float], threshold: float = 0.5) -> List[str]:
+        """Return field names whose confidence is strictly below threshold."""
+        return [k for k, v in scores.items() if v < threshold]
+
+
+# ---------------------------------------------------------------------------
+# PartialExtractor  (new in 1.2.0)
+# ---------------------------------------------------------------------------
+
+class PartialExtractor:
+    """
+    Return the best-effort partial data even when full validation fails.
+
+    Standard extract() returns succeeded=False and partial data when
+    validation fails. PartialExtractor makes this first-class: it always
+    returns whatever fields were successfully extracted, annotating each
+    field with a ``_partial`` flag in the result metadata.
+
+    Example
+    -------
+    >>> partial = PartialExtractor(provider="openai", model="gpt-4o-mini", api_key="sk-...")
+    >>> result = partial.extract("John is 34 years old.", {"name": str, "age": int, "email": str})
+    >>> print(result.data)        # e.g. {'name': 'John', 'age': 34}  — email missing but still returned
+    >>> print(result.partial_fields)  # ['email']
+    """
+
+    def __init__(
+        self,
+        provider: str,
+        model: str,
+        api_key: str,
+        *,
+        base_url: Optional[str] = None,
+        max_retries: int = 3,
+        timeout: float = 30.0,
+        temperature: float = 0.0,
+    ) -> None:
+        self._provider = provider
+        self._model = model
+        self._api_key = api_key
+        self._base_url = base_url
+        self._max_retries = max_retries
+        self._timeout = timeout
+        self._temperature = temperature
+
+    def extract(self, prompt: str, schema: "SchemaInput") -> "PartialResult":
+        from .extractor import extract as _extract
+        result = _extract(
+            prompt=prompt,
+            schema=schema,
+            provider=self._provider,
+            model=self._model,
+            api_key=self._api_key,
+            base_url=self._base_url,
+            max_retries=self._max_retries,
+            timeout=self._timeout,
+            temperature=self._temperature,
+        )
+        failed_fields = {f.field for f in result.failures}
+        data = {k: v for k, v in (result.data or {}).items() if k not in failed_fields}
+        return PartialResult(data=data, full_result=result, partial_fields=list(failed_fields))
+
+    async def aextract(self, prompt: str, schema: "SchemaInput") -> "PartialResult":
+        from .extractor import aextract as _aextract
+        result = await _aextract(
+            prompt=prompt,
+            schema=schema,
+            provider=self._provider,
+            model=self._model,
+            api_key=self._api_key,
+            base_url=self._base_url,
+            max_retries=self._max_retries,
+            timeout=self._timeout,
+            temperature=self._temperature,
+        )
+        failed_fields = {f.field for f in result.failures}
+        data = {k: v for k, v in (result.data or {}).items() if k not in failed_fields}
+        return PartialResult(data=data, full_result=result, partial_fields=list(failed_fields))
+
+
+class PartialResult:
+    """Result from PartialExtractor — always contains the best-effort data."""
+
+    __slots__ = ("data", "full_result", "partial_fields")
+
+    def __init__(self, data: Dict[str, Any], full_result: Any, partial_fields: List[str]) -> None:
+        self.data = data
+        self.full_result = full_result
+        self.partial_fields = partial_fields
+
+    @property
+    def is_complete(self) -> bool:
+        return len(self.partial_fields) == 0
+
+    def __repr__(self) -> str:
+        return (
+            f"PartialResult(fields={list(self.data.keys())}, "
+            f"partial={self.partial_fields}, complete={self.is_complete})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# ExtractionDiff  (new in 1.2.0)
+# ---------------------------------------------------------------------------
+
+class ExtractionDiff:
+    """
+    Diff two ExtractResult objects to identify field-level changes.
+
+    Useful for regression testing, schema migration checks, or monitoring
+    prompt changes that alter extraction output.
+
+    Example
+    -------
+    >>> diff = ExtractionDiff(old_result, new_result)
+    >>> print(diff.changed)   # {'age': (34, 35)}
+    >>> print(diff.added)     # {'email': 'foo@bar.com'}
+    >>> print(diff.removed)   # {'nickname': 'JD'}
+    >>> print(diff.summary()) # human-readable summary
+    """
+
+    def __init__(self, old: Any, new: Any) -> None:
+        old_data = old.data or {}
+        new_data = new.data or {}
+
+        old_keys = set(old_data.keys())
+        new_keys = set(new_data.keys())
+
+        self.added: Dict[str, Any] = {k: new_data[k] for k in new_keys - old_keys}
+        self.removed: Dict[str, Any] = {k: old_data[k] for k in old_keys - new_keys}
+        self.changed: Dict[str, Tuple[Any, Any]] = {
+            k: (old_data[k], new_data[k])
+            for k in old_keys & new_keys
+            if old_data[k] != new_data[k]
+        }
+        self.unchanged: Dict[str, Any] = {
+            k: old_data[k]
+            for k in old_keys & new_keys
+            if old_data[k] == new_data[k]
+        }
+
+    @property
+    def has_diff(self) -> bool:
+        return bool(self.added or self.removed or self.changed)
+
+    def summary(self) -> str:
+        lines = [f"ExtractionDiff — {'changes detected' if self.has_diff else 'no changes'}"]
+        if self.added:
+            lines.append(f"  Added:   {list(self.added.keys())}")
+        if self.removed:
+            lines.append(f"  Removed: {list(self.removed.keys())}")
+        if self.changed:
+            for k, (old_v, new_v) in self.changed.items():
+                lines.append(f"  Changed: {k!r}: {old_v!r} → {new_v!r}")
+        return "\n".join(lines)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "added": self.added,
+            "removed": self.removed,
+            "changed": {k: {"old": o, "new": n} for k, (o, n) in self.changed.items()},
+            "unchanged_count": len(self.unchanged),
+        }
+
+
+# ---------------------------------------------------------------------------
+# MultiSchemaExtractor  (new in 1.2.0)
+# ---------------------------------------------------------------------------
+
+class MultiSchemaExtractor:
+    """
+    Run one prompt against multiple schemas concurrently and collect results.
+
+    Useful when the same document needs to be parsed with different schemas
+    simultaneously (e.g. extracting entities AND sentiment AND metadata).
+
+    Parameters
+    ----------
+    provider : str
+    model : str
+    api_key : str
+    max_workers : int
+        Thread pool size for concurrent schema extraction.
+
+    Example
+    -------
+    >>> mse = MultiSchemaExtractor("openai", "gpt-4o-mini", api_key="sk-...")
+    >>> results = mse.run("John Doe, 34, likes hiking.", {
+    ...     "person": {"name": str, "age": int},
+    ...     "interests": {"hobby": str},
+    ... })
+    >>> results["person"].data    # {'name': 'John Doe', 'age': 34}
+    >>> results["interests"].data # {'hobby': 'hiking'}
+    """
+
+    def __init__(
+        self,
+        provider: str,
+        model: str,
+        api_key: str,
+        *,
+        base_url: Optional[str] = None,
+        max_workers: int = 4,
+        max_retries: int = 3,
+        timeout: float = 30.0,
+        temperature: float = 0.0,
+    ) -> None:
+        self._provider = provider
+        self._model = model
+        self._api_key = api_key
+        self._base_url = base_url
+        self._max_workers = max_workers
+        self._max_retries = max_retries
+        self._timeout = timeout
+        self._temperature = temperature
+
+    def run(
+        self,
+        prompt: str,
+        schemas: Dict[str, "SchemaInput"],
+    ) -> Dict[str, Any]:
+        """
+        Extract prompt against each schema concurrently.
+
+        Parameters
+        ----------
+        prompt : str
+        schemas : dict[str, SchemaInput]
+            Mapping of label → schema.
+
+        Returns
+        -------
+        dict[str, ExtractResult]
+        """
+        import concurrent.futures
+        from .extractor import extract as _extract
+
+        results: Dict[str, Any] = {}
+
+        def _run_one(label: str, schema: "SchemaInput") -> tuple:
+            result = _extract(
+                prompt=prompt,
+                schema=schema,
+                provider=self._provider,
+                model=self._model,
+                api_key=self._api_key,
+                base_url=self._base_url,
+                max_retries=self._max_retries,
+                timeout=self._timeout,
+                temperature=self._temperature,
+            )
+            return label, result
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self._max_workers) as ex:
+            futs = {ex.submit(_run_one, label, schema): label for label, schema in schemas.items()}
+            for fut in concurrent.futures.as_completed(futs):
+                label, result = fut.result()
+                results[label] = result
+
+        return results
+
+    async def arun(
+        self,
+        prompt: str,
+        schemas: Dict[str, "SchemaInput"],
+    ) -> Dict[str, Any]:
+        """Async version of run()."""
+        from .extractor import aextract as _aextract
+
+        sem = asyncio.Semaphore(self._max_workers)
+
+        async def _run_one(label: str, schema: "SchemaInput") -> tuple:
+            async with sem:
+                result = await _aextract(
+                    prompt=prompt,
+                    schema=schema,
+                    provider=self._provider,
+                    model=self._model,
+                    api_key=self._api_key,
+                    base_url=self._base_url,
+                    max_retries=self._max_retries,
+                    timeout=self._timeout,
+                    temperature=self._temperature,
+                )
+                return label, result
+
+        pairs = await asyncio.gather(*[_run_one(l, s) for l, s in schemas.items()])
+        return dict(pairs)
