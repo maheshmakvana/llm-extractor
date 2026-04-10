@@ -5,11 +5,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="llm-extractor",
-    version="1.0.0",
+    version="1.1.0",
     author="Mahesh Makvana",
     description=(
         "Extract structured, validated JSON from any LLM — "
-        "OpenAI, Anthropic, Gemini — with schema validation, semantic rules, and auto-retry."
+        "OpenAI, Anthropic, Gemini — with batch extraction, caching, confidence scoring, "
+        "schema evolution, pipeline extraction, and smart auto-retry."
     ),
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -27,6 +28,31 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Intended Audience :: Developers",
+    ],
+    keywords=[
+        "llm extraction",
+        "structured output",
+        "json extraction",
+        "llm json",
+        "openai structured output",
+        "anthropic structured output",
+        "pydantic extraction",
+        "schema validation llm",
+        "auto retry llm",
+        "batch llm extraction",
+        "llm caching",
+        "confidence scoring llm",
+        "schema migration",
+        "llm pipeline",
+        "extract json from llm",
+        "llm schema",
+        "langchain extraction",
+        "openai function calling",
+        "llm output parsing",
+        "ai data extraction",
+        "structured ai output",
+        "rate limiter llm",
+        "async llm extraction",
     ],
     python_requires=">=3.8",
     install_requires=[

@@ -45,7 +45,18 @@ from .providers import (
     ProviderResponse,
 )
 
-__version__ = "1.0.0"
+from .advanced import (
+    ExtractionCache,
+    RateLimiter,
+    batch_extract,
+    abatch_extract,
+    ConfidenceScorer,
+    SchemaEvolver,
+    ExtractionPipeline,
+    extract_with_budget,
+)
+
+__version__ = "1.1.0"
 __author__ = "Mahesh Makvana"
 __all__ = [
     # Core
@@ -66,4 +77,13 @@ __all__ = [
     # Provider config (for advanced use)
     "ProviderConfig",
     "ProviderResponse",
+    # Advanced (1.1.0)
+    "ExtractionCache",
+    "RateLimiter",
+    "batch_extract",
+    "abatch_extract",
+    "ConfidenceScorer",
+    "SchemaEvolver",
+    "ExtractionPipeline",
+    "extract_with_budget",
 ]
