@@ -221,6 +221,18 @@ result = extract(
 - **Full observability** — every attempt, failure, token count, and latency recorded
 - **Zero magic** — no hidden prompt injection, no global state, fully inspectable
 
+## Changelog
+
+### v1.2.0 (2026-04-10)
+- Added Changelog section to README for release traceability
+- Added advanced extraction utilities: ExtractionCache, RateLimiter, batch_extract, ConfidenceScorer, SchemaEvolver, ExtractionPipeline
+
+### v1.1.0
+- Added ExtractionCache, RateLimiter, batch_extract, ConfidenceScorer, SchemaEvolver, ExtractionPipeline; SEO updates
+
+### v1.0.0
+- Initial release: structured LLM output extraction, multi-provider, semantic validation, auto-retry, observability
+
 ## License
 
 MIT
