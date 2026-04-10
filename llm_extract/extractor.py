@@ -1,5 +1,5 @@
 """
-extractor.py — Core extraction engine for llm-extract.
+extractor.py — Core extraction engine for llm-extractor.
 
 Handles:
   - Building prompt messages (system + user)

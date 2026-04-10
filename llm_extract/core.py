@@ -1,5 +1,5 @@
 """
-core.py — Schema definition and type coercion for llm-extract.
+core.py — Schema definition and type coercion for llm-extractor.
 
 Supports:
   - dict-based schemas  {"field": type, ...}

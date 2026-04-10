@@ -84,7 +84,7 @@ class OpenAIAdapter(ProviderAdapter):
             except ImportError:
                 raise ImportError(
                     "openai package is required for the OpenAI provider. "
-                    "Install with: pip install 'llm-extract[openai]'"
+                    "Install with: pip install 'llm-extractor[openai]'"
                 )
             kwargs: Dict[str, Any] = {
                 "api_key": self._config.api_key,
@@ -149,7 +149,7 @@ class OpenAIAdapter(ProviderAdapter):
             from openai import AsyncOpenAI
         except ImportError:
             raise ImportError(
-                "openai package is required. Install with: pip install 'llm-extract[openai]'"
+                "openai package is required. Install with: pip install 'llm-extractor[openai]'"
             )
 
         kwargs: Dict[str, Any] = {
@@ -216,7 +216,7 @@ class AnthropicAdapter(ProviderAdapter):
             except ImportError:
                 raise ImportError(
                     "anthropic package is required for the Anthropic provider. "
-                    "Install with: pip install 'llm-extract[anthropic]'"
+                    "Install with: pip install 'llm-extractor[anthropic]'"
                 )
             self._client = anthropic.Anthropic(
                 api_key=self._config.api_key,
@@ -293,7 +293,7 @@ class AnthropicAdapter(ProviderAdapter):
             import anthropic
         except ImportError:
             raise ImportError(
-                "anthropic package is required. Install with: pip install 'llm-extract[anthropic]'"
+                "anthropic package is required. Install with: pip install 'llm-extractor[anthropic]'"
             )
 
         async_client = anthropic.AsyncAnthropic(
@@ -361,7 +361,7 @@ class GeminiAdapter(ProviderAdapter):
         except ImportError:
             raise ImportError(
                 "google-generativeai package is required for the Gemini provider. "
-                "Install with: pip install 'llm-extract[google]'"
+                "Install with: pip install 'llm-extractor[google]'"
             )
         genai.configure(api_key=self._config.api_key)
         generation_config = {

@@ -1,5 +1,5 @@
 """
-observability.py — Per-call and session-level observability for llm-extract.
+observability.py — Per-call and session-level observability for llm-extractor.
 
 Records every attempt, raw response, validation failures, token counts,
 and latency so you know exactly why structured extraction failed.

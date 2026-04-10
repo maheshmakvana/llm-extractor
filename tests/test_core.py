@@ -1,5 +1,5 @@
 """
-tests/test_core.py — Unit tests for llm-extract (no API keys required).
+tests/test_core.py — Unit tests for llm-extractor (no API keys required).
 
 Covers:
   - Schema construction (dict, pydantic, JSON Schema)

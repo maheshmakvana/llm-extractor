@@ -1,9 +1,9 @@
 """
-llm-extract
+llm-extractor
 ===========
 Extract structured, validated JSON from any LLM.
 
-    pip install llm-extract
+    pip install llm-extractor
 
 Quick start::
 
