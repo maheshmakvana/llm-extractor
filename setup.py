@@ -5,11 +5,11 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="llm-extractor",
-    version="1.2.0",
+    version="1.2.3",
     author="Mahesh Makvana",
     description=(
-        "Extract structured, validated JSON from any LLM — "
-        "OpenAI, Anthropic, Gemini — with batch extraction, caching, per-field confidence scoring, "
+        "Extract structured, validated JSON from any LLM ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â "
+        "OpenAI, Anthropic, Gemini ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â with batch extraction, caching, per-field confidence scoring, "
         "schema evolution, multi-schema extraction, output transforms, partial extraction, "
         "extraction diff, pipeline extraction, and smart auto-retry."
     ),
