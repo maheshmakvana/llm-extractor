@@ -1,3 +1,5 @@
+![llm-extractor Banner](assets/images/banner.svg)
+
 # llm-extractor
 
 **Extract structured, validated JSON from any LLM.**

@@ -1,0 +1,7 @@
+<svg width="800" height="200" xmlns="http://www.w3.org/2000/svg">
+  <rect width="800" height="200" fill="#6366f1" rx="10"/>
+  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" 
+        font-family="Arial, sans-serif" font-size="24" fill="white" font-weight="bold">
+    LLM Data Extraction
+  </text>
+</svg>
